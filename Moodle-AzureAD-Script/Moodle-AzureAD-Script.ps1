@@ -94,9 +94,26 @@ function Create-PreAuthorizedApplication(
         return $preAuthorizedApplication
     }
 
+<#
+.DESCRIPTION 
+
+This function will check whether the URL is valid and secure 
+#>
+function IsValidateSecureUrl {
+    param(
+        [Parameter(Mandatory = $true)] [string] $url
+    )
+    # Url with https prefix REGEX matching
+    return ($url -match "https:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)")
+}
+
 # Step 1 - Getting the necessary information
 $displayName = Read-Host -Prompt "Enter the AAD app name (ex: Moodle plugin)"
 $moodleDomain = Read-Host -Prompt "Enter the URL of your Moodle server (ex: https://www.moodleserver.com)"
+
+if (-not(IsValidateSecureUrl($moodleUrl))) {
+        Write-Host "Invalid websiteUrl. This should be an https url."
+}
 
 if ($moodleDomain -notmatch '.+?\/$')
 {
@@ -104,9 +121,9 @@ if ($moodleDomain -notmatch '.+?\/$')
 }
 
 # Step 2 - Construct the reply URLs
-$moodleUrl = $moodleDomain
 $botFrameworkUrl = 'https://token.botframework.com/.auth/web/redirect'
-$authUrl = $moodleDomain + '/auth/oidc/'
+$authUrl = $moodleUrl + '/auth/oidc/'
+
 
 $replyUrls = ($moodleUrl, $botFrameworkUrl, $authUrl)
 
@@ -119,7 +136,7 @@ $app = New-AzureADApplication -DisplayName $displayName
 # Set identifier URL
 $appId = $app.AppId
 $appObjectId = $app.ObjectId
-$IdentifierUris = "api://$appId"
+$IdentifierUris = 'api://' + $moodleDomain + '/' + $appId
 
 # Removing default scope user_impersonation, access and optional claims
 $localPath = Get-Location
@@ -160,15 +177,19 @@ Set-AzureADApplicationLogo -ObjectId $app.ObjectId -FilePath $imgLocation
 # Expose an API
 
 $msApplication = Get-AzureADMSApplication -ObjectId $appObjectId
+
+# Set identifier URL
+$identifierUris = 'api://' + $moodleDomain + '/' + $appId
+Set-AzureADMSApplication -ObjectId $msApplication.Id -IdentifierUris $identifierUris
                           
 # Create access_as_user scope
 $scopes = New-Object System.Collections.Generic.List[Microsoft.Open.MsGraph.Model.PermissionScope]
 $msApplication.Api.Oauth2PermissionScopes | foreach-object { $scopes.Add($_) }
 $scope = Create-Scope -value "access_as_user"  `
     -userConsentDisplayName "Teams can access the user profile and make requests on the user's behalf"  `
-    -userConsentDescription "Enable Teams to call this app’s APIs with the same rights as the user"  `
-    -adminConsentDisplayName "Teams can access the user’s profile"  `
-    -adminConsentDescription "Allows Teams to call the app’s web APIs as the current user"
+    -userConsentDescription "Enable Teams to call this appâ€™s APIs with the same rights as the user"  `
+    -adminConsentDisplayName "Teams can access the userâ€™s profile"  `
+    -adminConsentDescription "Allows Teams to call the appâ€™s web APIs as the current user"
 
 $scopes.Add($scope)
 $msApplication.Api.Oauth2PermissionScopes = $scopes
